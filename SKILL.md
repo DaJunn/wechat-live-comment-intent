@@ -1,74 +1,62 @@
 ---
 name: wechat-live-comment-intent
-description: >-
-  采集视频号「直播回看·数据大屏」左侧「全部评论」的历史评论(直播已结束、不用开播),
-  清洗后筛出「购买意向 + 需求提问」类评论,自由抽取观众想要的商品/品类词,
-  支持连续多场回放汇总成「选品意向清单」,输出本地 CSV/MD + Obsidian。
-  当用户说「采这场回看的评论」「把某主播几场直播的观众意向整理成选品清单」
-  「看观众都想买啥」「视频号回看评论选品」「多场评论选品意向」时使用。
-  注意:这是「直播结束后回看页」的评论采集;若是「直播进行中」实时弹幕采集,走同项目的
-  src/collector.mjs(npm start)。两者共用复盘/分析。
+description: 半自动采集视频号已结束直播的回看评论，筛选购买意向与需求提问，输出原句和候选商品清单。适用于单场或指定多场评论选品；需外部采集项目及用户手动滚动，也可分析已有 JSONL。
 ---
 
-# 视频号回看评论 · 选品意向
+# 视频号回看评论选品意向
 
-把一个带货者若干场**已结束**直播的回看评论扒下来,筛出观众明确「想买/在问」的,
-汇成选品意向清单。代码复用本机已有项目 `~/Projects/wechat-danmu-collector`(别另起炉灶)。
+从回看评论整理「观众问了什么、可能需要什么」，保留原句供选品复核。**本仓库只有 skill 文档，采集 / 分析代码在外部项目** `~/Projects/wechat-danmu-collector`；换机器时先提供实际项目目录，不能仅安装本 skill 就声称可以采集。
 
-## 适用 / 不适用
-- ✅ 直播**已结束**,进数据大屏「复盘回看」,左侧「全部评论」——本 skill。
-- ❌ 直播**进行中**实时弹幕 → 用同项目 `npm start`(src/collector.mjs,playwright 拦接口)。
+## 输入与前提
 
-## 前提
-- Chrome 已登录视频号助手(channels.weixin.qq.com)。
-- kimi-webbridge daemon 在跑:`~/.kimi-webbridge/bin/kimi-webbridge status`(running+extension_connected)。
-- 项目已 `npm install`(回看采集只用 Node 原生 fetch,不需要 playwright;实时采集才需要)。
+先确定：带货者、要分析的场次清单、回看链接 / objectId 或已有 JSONL，以及是否需要写入 Obsidian。
 
-## 怎么拿 objectId
-页面路径:**数据详情 → 数据大屏趋势 → 复盘回看**。
-回看页地址栏:`.../dashboardV4/review?objetctId=【这一串就是 objectId】`(注意官方拼写是 objetctId)。
-多场就收集多个 objectId。也可直接把整条 review 网址丢给脚本。
+- 已有 JSONL：直接分析，无需 Chrome。
+- 新采集：Node.js、已登录的视频号 Chrome、Kimi WebBridge 在线，以及用户配合滚动评论。
+- 实时直播弹幕：不走此回看流程；外部项目的 `src/collector.mjs` 属另一模式，需另查其要求。
 
-## 关键约束:半自动(人手滚 + 脚本同步抓)
-回看的「全部评论」是 vue-recycle-scroller 虚拟列表,**懒加载分页只认真实人手滚轮**——
-实测合成 WheelEvent、改 scrollTop、CDP `Input.dispatchMouseEvent(mouseWheel)`、点击聚焦、
-键盘 PageDown、拉视频进度/倍速播放,**全都触发不了加载**(列表冻在首批 ~16 条);只有用户
-用鼠标真滚才会一批批刷出来。且虚拟列表 DOM 里只留约 16 行,滚过的会被回收。
-所以采集必须:**脚本高频轮询 DOM 抓 + 用户同步用鼠标把评论从头滚到底**,按 data-index 去重收全。
-(这条已多轮实测确认,别再尝试全自动滚动。)
+先检查项目中 `src/capture-while-scroll.mjs`、`src/wb.mjs` 和 `src/select-intent.mjs` 是否存在。下文行为已按本机外部项目 0.1.0 核对，其他版本需查看实际参数和默认写入。该版本的回看采集和意向分析使用 Node 内置能力，无需为此安装实时模式的 Playwright。
 
-## 标准流程(一次一场)
+## 采集：一次一场
+
+回看入口为「数据详情 → 数据大屏趋势 → 复盘回看」，链接形如 `dashboardV4/review?objetctId=...`，保留官方参数拼写。以下命令在实际项目目录执行：
 
 ```bash
 cd ~/Projects/wechat-danmu-collector
-
-# 1) 起抓取窗口(秒数给够你滚到底,如 180);脚本会自动导航到该场回看页
-node src/capture-while-scroll.mjs <objectId 或 review网址> 180
-#    → 脚本一跑起来,立刻去浏览器把左侧「全部评论」从最顶【慢慢滚到底】,
-#      滚到不再冒新评论;滚完可在终端按 Ctrl+C 提前落盘 → replays/<objectId>.jsonl
-#    多场就对每场各跑一次(各自滚一遍)
-
-# 2) 出选品意向(多场汇总),写本地 CSV/MD + Obsidian
-node src/select-intent.mjs replays/*.jsonl --md
+~/.kimi-webbridge/bin/kimi-webbridge status
+node src/capture-while-scroll.mjs "实际objectId或完整回看链接" 180
 ```
 
-懒人:双击 `回看选品.command`,粘 objectId、给秒数,按提示滚,自动出报告。
+确认连接状态 `running`、`extension_connected` 均为 true。脚本可能导航当前标签页；开始采集后提示用户从评论顶部慢慢滚到底。命令中的 180 是采集窗口秒数；未传时脚本默认 120 秒。
 
-## 口径(已定,改口径就改脚本顶部词典)
-- **过滤口径**:分析前先去掉纯表情/空评论、1-2 字无意义短句、短句空话、完全重复内容/疑似刷屏;原始 jsonl 仍保留全量评论方便复核。
-- **意向范围**:购买意向(我要/怎么买/链接/上车/多少钱…) + 需求提问(有没有/求推荐/哪个好/含问号…)。词典在 `src/select-intent.mjs` 顶部 `BUY`/`NEED`,可自由增删。
-- **商品归类**:纯自由抽取——不依赖本场讲解列表,从评论里剥意图词后抽残留中文词作候选,**含噪声,以原句为准、人工复核**。
-- **输出**:`reports/选品意向-原句-*.csv`、`reports/选品清单-候选-*.csv`、`reports/选品意向-*.md`,并写 Obsidian
-  `经营运营/直播评论选品意向/`(库路径可用环境变量 `OBSIDIAN_VAULT` 覆盖)。
+评论使用虚拟列表，当前实现约每 250 毫秒读取渲染行，按 `data-index` 去重。沿用已验证的人手滚动方式；只会保存观察到的行，滚太快、窗口不足、页面切换都可能漏采。不要把「从头滚到底」自动等同全量覆盖。
 
-## 技术要点(改版维护点)
-- 数据大屏是 **wujie 微前端**,评论在同源 iframe(`empty.html`)里——脚本自动钻 iframe.contentDocument。
-- 评论列表是 **vue-recycle-scroller 虚拟滚动**(`.comment__list`),只渲染约 16 行;脚本高频(~250ms)轮询渲染中的行,按 `data-index`(全量真实序号)去重累积,人滚到哪收到哪。
-- 单条评论:`.message-username-desc`(昵称) / `.message-content`(正文,表情转 `[名]`) / 行尾 `HH:MM`(直播内时刻) / 标签 `买过N单`·`粉丝`·`回复`。
-- 评论不在任何单一接口里一次性返回(实测 `get_live_dashboard_basic_info` 等都不带全量),是播放器随回看逐步吐 + 滚动懒加载,所以走 DOM 抓而非接口。
-- 平台改版若采不到:先 `kimi-webbridge status`;再看选择器(`.comment__list` / `.review-comment-item` / `.message-content`)是否被改名。
+采集写到 `replays/<objectId>.jsonl`，同场重跑会替换原文件；需重跑时先保存旧采集副本。结束后核对文件非空、JSONL 可解析、元信息条数与实际条数、首尾序号和缺口。终端打印成功或生成文件不足以证明完整落盘。零条、文件损坏或明显缺口时保留断点并报告部分采集，不继续称全量成功。
 
-## 边界
-- 只读 DOM,不发言、不操作中控台、不破解接口,账号风险最低。
-- 不编造数据;评论里 `**` 是平台对昵称的脱敏,原样保留。
-- 闲聊场/社群场可能抽不到选品词(正常,说明那几场没明确商品意向)。
+## 分析：只选请求的场次
+
+```bash
+node src/select-intent.mjs replays/实际场次A.jsonl replays/实际场次B.jsonl
+```
+
+默认就会生成本地两份 CSV。不要直接用 `replays/*.jsonl`，除非用户确实要分析该目录全部场次；否则会混入其他带货者或旧记录。
+
+加 `--md` 会同时生成本地 Markdown，**并写入 Obsidian** 的 `经营运营/直播评论选品意向/`；库默认是 `~/Documents/Obsidian Vault`，可用 `OBSIDIAN_VAULT` 指定。仅在用户需要该写入时使用；只需本地 Markdown 时，根据本地结果另存，当前脚本没有“只写 MD”的参数。
+
+`回看选品.command` 是外部项目的一键入口，会自动分析目录下全部 JSONL 并使用 `--md`，只在范围和写入目标均符合请求时使用。
+
+## 分析口径
+
+- 过滤空内容、纯表情、1–2 字短句、系统类消息及同一场内「同昵称 + 同内容」重复行；原始采集文件保留供复核。
+- 购买意向优先，其次需求提问；规则词典在 `src/select-intent.mjs` 的 `BUY` / `NEED`，问号等也可能触发，需排除闲聊误判。
+- 商品候选是去意图词后留下的 2–8 字中文词，可能漏掉英文品牌、短词和复杂描述；不能当完整商品识别。
+- 「去重人数」按昵称计数，脱敏 / 同名会影响结果；「出现场次」按标题或 ID 聚合，同标题可能合并。不能直接当精确用户规模。
+- 候选词必须回看原句；没抽到候选词只说明本次规则未命中，不能断言观众没有需求。
+
+## 产物与结果
+
+`reports/` 下输出 `选品意向-原句-*.csv`、`选品清单-候选-*.csv`；使用 `--md` 时另有 `选品意向-*.md`。文件名按分钟生成，同一分钟重跑需先保留上一版。
+
+交付说明场次范围、已采条数、过滤 / 命中数、覆盖缺口，列出候选词及原句证据。明确哪些为原始评论、规则判断、人工复核和已写入文件。
+
+连接失效或评论选择器变化时，先检查主页面与 `.comment__list`、`.review-comment-item`、`.message-content`；一次复查仍无数据就停，报告依赖或改版问题。保留平台脱敏昵称，不读取凭据、不发评论、不操作商品。

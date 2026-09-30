@@ -1,42 +1,27 @@
-# wechat-live-comment-intent
+# 视频号回看评论选品意向 Skill
 
-**回看评论挖选品意向** —— 清洗评论、筛出购买意向与需求提问，汇总成选品意向清单
+从已结束直播的评论中筛出购买意向和需求提问，保留原句并生成待复核的候选商品清单，支持指定多场汇总。
 
-让 AI agent（DSH / Codex / Claude Code 等）使用。
+**本仓库只有操作说明。** 需要另备 `wechat-danmu-collector` 项目，默认目录为 `~/Projects/wechat-danmu-collector`；安装 skill 不会安装采集器。
 
-## 解决什么问题
-
-之前想知道「观众到底想买什么」，只能凭印象，或者一条条翻评论。
-
-现在采集直播回看的全部评论（直播已结束、不用开播），清洗后筛出「购买意向 + 需求提问」类评论，自由抽取观众想要的商品 / 品类词，支持连续多场汇总成**选品意向清单**。
-
-## 前置依赖
-
-1. **kimi-webbridge daemon** 在跑：
-   ```bash
-   ~/.kimi-webbridge/bin/kimi-webbridge status   # 要 running:true + extension_connected:true
-   ```
-   没装：`curl -fsSL https://cdn.kimi.com/webbridge/install.sh | bash`
-2. **Chrome 已登录`channels.weixin.qq.com`（视频号直播回看·数据大屏）**。本系列只复用你自己已打开的标签页，**不代登录**。
-
-## 安装
+## 安装 Skill
 
 ```bash
 git clone https://github.com/DaJunn/wechat-live-comment-intent.git \
   ~/.agents/skills/wechat-live-comment-intent
 ```
 
-## 触发方式
+## 怎么用
 
-对 agent 说：「采这场回看的评论」「把某主播几场直播的观众意向整理成选品清单」「看观众都想买啥」「视频号回看评论选品」。
+- 「采这场回看的评论，我来滚动，帮我整理观众想买什么。」
+- 「只分析这两场 JSONL，输出候选品类和原句证据。」
 
+新采集需要 Node.js、已登录的视频号 Chrome、Kimi WebBridge，并由用户慢慢滚动评论。已有 JSONL 可直接本地分析。该流程不自动采集直播中的实时弹幕，也不保证评论全量覆盖。
 
-## 说明
+## 输出与注意事项
 
-- ⚠️ **评论列表是懒加载**，键盘 PageDown / 调倍速都触发不了加载。需要**用户用鼠标把评论从头滚到底**，脚本同步轮询抓取并按 data-index 去重
-- 这是「直播结束后回看页」的评论；直播进行中的实时弹幕采集走同项目 `src/collector.mjs`
+默认输出意向原句和候选商品两份 CSV。候选词来自规则抽取，需结合原句复核，未命中不代表无需求。
 
-## 相关
+加 `--md` 会同时写本地 Markdown 和 Obsidian；一键入口还会分析目录内全部 JSONL。操作前需核对场次范围与写入目标，采集后需验证文件条数和覆盖缺口。
 
-- 完整技能合集见飞书文档《AI减负视频号运营技能合集》
-- 更多 skill：https://github.com/DaJunn
+完整步骤、命令与限制见 [SKILL.md](SKILL.md)。
